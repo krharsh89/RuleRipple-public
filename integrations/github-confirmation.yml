@@ -1,0 +1,35 @@
+name: Acknowledge RuleRipple budget
+run-name: "RuleRipple approval receipt · ${{ inputs.notification_id }}"
+on:
+  workflow_dispatch:
+    inputs:
+      notification_id:
+        description: RuleRipple notification reference (not an approval or credential)
+        required: true
+        type: string
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: ruleripple-confirmation-${{ inputs.notification_id }}
+  cancel-in-progress: false
+jobs:
+  acknowledge:
+    if: github.ref == 'refs/heads/main'
+    strategy:
+      fail-fast: false
+      matrix:
+        worker: [ONE, TWO]
+    name: Confirm agent ${{ matrix.worker }} authorization
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Recheck budget and acknowledge receipt (no workload execution)
+        env:
+          RULERIPPLE_ORIGIN: ${{ vars.RULERIPPLE_ORIGIN }}
+          RULERIPPLE_AGENT_CREDENTIAL: ${{ secrets[format('RULERIPPLE_AGENT_{0}', matrix.worker)] }}
+          RULERIPPLE_NOTIFICATION_ID: ${{ inputs.notification_id }}
+        run: node scripts/ruleripple-confirmation.mjs

@@ -1,0 +1,72 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function validWorkspace(userId) {
+      return request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly([
+          'schemaVersion', 'ownerId', 'ownerEmail', 'revision', 'segmentCount', 'storageLayout', 'updatedAt'
+        ])
+        && request.resource.data.schemaVersion == 5
+        && request.resource.data.ownerId == userId
+        && request.resource.data.ownerEmail == request.auth.token.email
+        && request.resource.data.revision is int
+        && request.resource.data.revision >= 1
+        && request.resource.data.segmentCount is int
+        && request.resource.data.segmentCount >= 1
+        && request.resource.data.segmentCount <= 64
+        && request.resource.data.storageLayout == 'segmented-v1'
+        && request.resource.data.updatedAt is timestamp;
+    }
+
+    function validSegment(userId, segmentId) {
+      return request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly(['ownerId', 'index', 'payload'])
+        && request.resource.data.ownerId == userId
+        && request.resource.data.index is int
+        && request.resource.data.index >= 0
+        && request.resource.data.index < 64
+        && segmentId.matches('^[0-9]{3}$')
+        && request.resource.data.payload is string
+        && request.resource.data.payload.size() <= 450000;
+    }
+
+    match /workspaces/{userId} {
+      allow read, delete: if request.auth != null && request.auth.uid == userId;
+      allow create: if validWorkspace(userId) && request.resource.data.revision == 1;
+      allow update: if validWorkspace(userId) && request.resource.data.revision == resource.data.revision + 1;
+
+      match /segments/{segmentId} {
+        allow read, delete: if request.auth != null && request.auth.uid == userId;
+        allow create, update: if validSegment(userId, segmentId);
+      }
+      match /agentConnections/{connectionId} {
+        allow read, delete: if request.auth != null && request.auth.uid == userId;
+        allow create: if request.auth != null && request.auth.uid == userId
+          && connectionId.matches('^[a-f0-9-]{36}$')
+          && request.resource.data.keys().hasOnly(['ownerId', 'payload'])
+          && request.resource.data.ownerId == userId
+          && request.resource.data.payload is string
+          && request.resource.data.payload.size() <= 4000;
+        // Immutable scope; replace a connection to rotate it. Delete revokes.
+        allow update: if false;
+      }
+      match /agentNotifications/{notificationId} {
+        allow read: if request.auth != null && request.auth.uid == userId;
+        // The server additionally verifies a host-key signature over the
+        // owner and payload before trusting any dispatch or receipt record.
+        allow create, update: if request.auth != null && request.auth.uid == userId
+          && notificationId.matches('^[a-f0-9]{64}$')
+          && request.resource.data.keys().hasOnly(['ownerId', 'payload', 'signature'])
+          && request.resource.data.ownerId == userId
+          && request.resource.data.payload is string
+          && request.resource.data.payload.size() <= 6000
+          && request.resource.data.signature is string
+          && request.resource.data.signature.matches('^[a-f0-9]{64}$');
+        allow delete: if false;
+      }
+    }
+  }
+}

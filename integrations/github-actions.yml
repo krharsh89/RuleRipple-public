@@ -1,0 +1,41 @@
+# Install alongside scripts/ruleripple-agent.mjs in the workflow repository.
+# Only trusted default-branch files are used; never execute pull-request code
+# with worker credentials. Two jobs have separate revocable connections.
+name: Submit agent budget requests
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.ruleripple/requests/**']
+permissions:
+  contents: read
+concurrency:
+  group: ruleripple-agent-delivery
+  cancel-in-progress: false
+jobs:
+  agent-one:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Deliver first worker request and read its decision
+        env:
+          RULERIPPLE_ORIGIN: ${{ vars.RULERIPPLE_ORIGIN }}
+          RULERIPPLE_AGENT_CREDENTIAL: ${{ secrets.RULERIPPLE_AGENT_ONE }}
+        run: node scripts/ruleripple-agent.mjs .ruleripple/requests/agent-one.json
+  agent-two:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Deliver second worker request and read its decision
+        env:
+          RULERIPPLE_ORIGIN: ${{ vars.RULERIPPLE_ORIGIN }}
+          RULERIPPLE_AGENT_CREDENTIAL: ${{ secrets.RULERIPPLE_AGENT_TWO }}
+        run: node scripts/ruleripple-agent.mjs .ruleripple/requests/agent-two.json

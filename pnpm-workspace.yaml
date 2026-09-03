@@ -1,0 +1,10 @@
+allowBuilds:
+  '@firebase/util': false
+  esbuild: true
+  protobufjs: false
+  sharp: true
+  unrs-resolver: true
+  workerd: true
+overrides:
+  postcss: 8.5.26
+  sharp: 0.35.0
