@@ -4,6 +4,94 @@
 
 RuleRipple is a browser-native policy control plane for humans and agents. Its Request inbox receives typed budget requests from trusted workers over HTTPS or WebMCP, evaluates the entire portfolio, and reserves capacity only after the configured human or policy authorization. No repository or source URL is required. Nineteen WebMCP tools also expose policy creation, deterministic simulation, full-version comparisons and governed execution. GitHub is an optional execution adapter, not the request model; Slack, Teams and other adapters remain expansion paths. The application—not the model—calculates every outcome, score, rank, allocation and balance.
 
+## Try the live application
+
+Open [ruleripple.krharsh89.chatgpt.site](https://ruleripple.krharsh89.chatgpt.site/) in the ChatGPT in-app browser or a WebMCP-enabled browser. Start a new guest workspace to configure and simulate a policy without an account or provider credentials. Sign-in, cloud persistence, the built-in assistant, and connected execution require the corresponding services described below.
+
+For a quick WebMCP check:
+
+1. Open a fresh workspace and define a policy with at least one resource pool and positive capacity.
+2. Confirm the header reports **WebMCP ready**.
+3. Ask the browser agent to call `get_policy_summary` and explain the active capacity.
+4. Submit two typed requests with `submit_budget_requests`, then use `get_request_inbox`, `evaluate_cases`, and `get_resource_ledger` to inspect the shared-budget result.
+5. Complete any required human approval in RuleRipple. An agent cannot approve its own request.
+
+The deterministic engine, rather than the language model, calculates all policy decisions. GitHub delivery over HTTPS is an additional integration path and is not required to verify the browser WebMCP tools.
+
+## Run locally
+
+Requirements: Node.js 22.13 or newer and pnpm.
+
+```bash
+git clone https://github.com/krharsh89/RuleRipple-public.git
+cd RuleRipple-public
+pnpm install --frozen-lockfile
+pnpm test
+pnpm build
+pnpm dev
+```
+
+Open the local address printed by the development server. Guest policy configuration and simulation work without credentials.
+
+## Configure your own hosted instance
+
+Copy `.env.example` to an ignored `.env.local` file for local development, or define the same names in the host's encrypted secret store. Never commit actual values.
+
+| Setting | Required for | Storage rule |
+| --- | --- | --- |
+| `FIREBASE_API_KEY`, `FIREBASE_PROJECT_ID` | Accounts and durable workspaces | Use your own Firebase web application and deploy `firestore.rules` to that project |
+| `OPENAI_API_KEY`, `OPERATOR_ALLOWED_EMAILS` | Built-in policy assistant | Server-side only; allow only intended operator email addresses |
+| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | Owner-authorized GitHub inspection and execution | Keep the client secret server-side; set the OAuth callback to `https://YOUR_HOST/api/github/callback` |
+| `AGENT_CREDENTIAL_KEY` | Issuing and verifying HTTPS worker credentials | Generate a private 32-byte signing key and store it server-side only |
+| `GITHUB_NOTIFICATION_REPOSITORY` | Sending authorization receipts to one GitHub worker repository | Set to an explicitly approved `owner/repository`; this is not a credential |
+
+The checked-in `.openai/hosting.json` and `.firebaserc` intentionally contain no owner project IDs. Connect the checkout to your own Sites and Firebase projects before publishing. The application reads secrets only from its server environment; no actual key, OAuth secret, access token, worker credential, or signing key belongs in source control.
+
+## Reproduce the two-worker GitHub flow
+
+The separate development worker repository is not required. Use any repository you control as the worker repository and install the public templates from this source tree:
+
+| Copy from this repository | Place in the worker repository |
+| --- | --- |
+| `integrations/agent-worker.mjs` | `scripts/ruleripple-agent.mjs` |
+| `integrations/github-actions.yml` | `.github/workflows/ruleripple-requests.yml` |
+| `integrations/github-confirmation.mjs` | `scripts/ruleripple-confirmation.mjs` |
+| `integrations/github-confirmation.yml` | `.github/workflows/ruleripple-confirmation.yml` |
+
+Then:
+
+1. In RuleRipple, create the policy and resource budget that both workers will share.
+2. Under **Request inbox → Connect agents**, create two `github` worker connections. Use the same policy resource, set an adequate per-request limit, and copy each one-time credential immediately.
+3. In the worker repository, store those credentials as encrypted GitHub Actions secrets named `RULERIPPLE_AGENT_ONE` and `RULERIPPLE_AGENT_TWO`. Set the non-secret repository variable `RULERIPPLE_ORIGIN` to the origin of your RuleRipple instance.
+4. Add `.ruleripple/requests/agent-one.json` and `.ruleripple/requests/agent-two.json`. Each request must use a unique, stable `submission_id`, declare `source.system` as `github`, use a stable `source.external_id`, name the policy resource, and provide values matching the active policy schema. Do not put a credential in either file.
+5. Run **Submit agent budget requests** in GitHub Actions. Both jobs authenticate independently and send their requests to RuleRipple, where they compete against the same saved portfolio and existing commitments.
+6. Refresh **Request inbox**, inspect the ranks and allocations, and complete the exact human budget approval if the policy requires one.
+7. To return a receipt, connect GitHub OAuth in RuleRipple and set `GITHUB_NOTIFICATION_REPOSITORY` to the worker repository. The confirmation workflow rechecks the saved authorization and acknowledges it. It does not run the workload, merge code, or report measured provider usage.
+
+A minimal request document has this shape; the policy-specific `values` must be replaced with fields declared by your policy:
+
+```json
+{
+  "requests": [
+    {
+      "submission_id": "worker-one-request-001",
+      "source": {
+        "system": "github",
+        "external_id": "owner/repository:worker-one-request-001"
+      },
+      "name": "Request a bounded resource allocation",
+      "reason": "Explain why this work needs the shared resource.",
+      "resource_id": "credits",
+      "requested": 400,
+      "minimum": 400,
+      "values": {}
+    }
+  ]
+}
+```
+
+Retries should retain the same `submission_id` and source identity so intake remains idempotent. The ledger distinguishes requested demand, simulated allocation, reserved or committed authorization, recorded consumption, and unknown provider usage; an authorization receipt is never presented as proof that work ran or credits were spent.
+
 ## Policy templates
 
 The built-in library provides schema-only starting points for six resource classes. Selecting one imports typed fields, resource identity, ranking structure, and allocation strategy—not capacity, reserve, rules, requests, or assignments:
