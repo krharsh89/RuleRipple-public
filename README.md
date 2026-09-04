@@ -8,15 +8,56 @@ RuleRipple is a browser-native policy control plane for humans and agents. Its R
 
 Open [ruleripple.krharsh89.chatgpt.site](https://ruleripple.krharsh89.chatgpt.site/) in the ChatGPT in-app browser or a WebMCP-enabled browser. Start a new guest workspace to configure and simulate a policy without an account or provider credentials. Sign-in, cloud persistence, the built-in assistant, and connected execution require the corresponding services described below.
 
-For a quick WebMCP check:
+## Testing instructions: guest WebMCP path
 
-1. Open a fresh workspace and define a policy with at least one resource pool and positive capacity.
-2. Confirm the header reports **WebMCP ready**.
-3. Ask the browser agent to call `get_policy_summary` and explain the active capacity.
-4. Submit two typed requests with `submit_budget_requests`, then use `get_request_inbox`, `evaluate_cases`, and `get_resource_ledger` to inspect the shared-budget result.
-5. Complete any required human approval in RuleRipple. An agent cannot approve its own request.
+This path verifies the browser tools and shared-budget decision without an account, API key, GitHub connection, or access to a private repository.
 
-The deterministic engine, rather than the language model, calculates all policy decisions. GitHub delivery over HTTPS is an additional integration path and is not required to verify the browser WebMCP tools.
+1. Open the live application in the ChatGPT in-app browser or another WebMCP-enabled browser.
+2. Choose **Open new workspace**. Do not sign in.
+3. Confirm the header reports **WebMCP ready**. If it reports unavailable, enable WebMCP in the browser or use the ChatGPT in-app browser before continuing.
+4. Give the browser agent the instruction below. It must call RuleRipple's tools rather than answer from the text alone.
+
+```text
+Use only RuleRipple's WebMCP tools for this task. Start by calling
+get_policy_summary. Configure this fresh workspace with create_policy:
+
+- name: Shared agent budget
+- objective: Allocate scarce credits across competing agent requests.
+- outcomes: eligible "Eligible", boundary "Boundary", review "Review"
+- field: integer priority, labelled Priority, minimum 0, maximum 100
+- resource: credits, labelled Agent credits, unit credits, capacity 500,
+  reserve 0, priority_first_fit, not divisible
+- primary resource: credits
+- ranking: priority descending, then demand for credits ascending
+- boundary: tolerance 0.1, maximum failed rules 0
+- scoring: base 50, minimum 0, maximum 100
+- governance: owner Workspace owner, active, human approval required,
+  rationale required
+
+If RuleRipple presents a policy-change approval, stop so I can approve it.
+After the policy is active, use one submit_budget_requests call for these two
+requests:
+
+1. submission_id support-001; agent id support-agent; agent name Support agent;
+   source system webmcp; external_id guest-flow:support-001; name Support triage;
+   reason Handle urgent customer requests; resource credits; requested 400;
+   minimum 400; priority 100.
+2. submission_id research-001; agent id research-agent; agent name Research agent;
+   source system webmcp; external_id guest-flow:research-001; name Research evaluation;
+   reason Evaluate a research workflow; resource credits; requested 400;
+   minimum 400; priority 50.
+
+Then call get_request_inbox, evaluate_cases, and get_resource_ledger. Explain
+the result. Do not approve a request, reserve resources separately, execute an
+external action, or claim that any work ran or credits were consumed.
+```
+
+5. If a policy-change card appears, review and approve it in the interface, then tell the browser agent to continue with the request portion of the instruction.
+6. The tool results must show both requests evaluated together: support ranks first and can receive 400 simulated credits; research receives 0 because the remaining 100 is below its 400-credit minimum. No usage has occurred.
+7. Open **Request inbox**, select support's **Review allocation**, enter a rationale such as `Higher priority under the active shared-budget policy`, and approve exactly 400 credits.
+8. Read the ledger again. It must show 400 reserved for support, 100 available, research waiting, and 0 recorded consumption. This proves authorization, not execution or spending.
+
+The deterministic engine, rather than the language model, calculates all policy decisions. GitHub delivery over HTTPS is an additional integration path and is not required for this guest WebMCP verification.
 
 ## Run locally
 
